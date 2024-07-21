@@ -1,0 +1,3 @@
+# ignore usr and build dirs
+/build/
+/usr/
