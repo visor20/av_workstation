@@ -39,8 +39,10 @@ typedef struct vidaw_state {
 typedef struct file_state {
 	size_t cur_num_audio_files;
 	uint8_t *main_buf;
+	uint32_t main_pos;
 	SDL_AudioSpec wav_spec[MAX_NUM_AUDIO_FILES];
 	uint32_t wav_len[MAX_NUM_AUDIO_FILES];
+	uint32_t max_wav_len;
 	uint8_t *wav_buf[MAX_NUM_AUDIO_FILES];
 } file_state;
 

@@ -80,6 +80,19 @@ static void init_usr_dir()
 	}
 }
 
+static void update_max_wav_len(file_state *p_file_state)
+{
+	uint32_t tmp = 0;
+	for (int i = 0; i < p_file_state->cur_num_audio_files; i++)
+	{
+		if (p_file_state->wav_len[i] > tmp)
+		{
+			tmp = p_file_state->wav_len[i];
+		}
+	}
+	p_file_state->max_wav_len = tmp;
+}
+
 void init_vidaw_state(vidaw_state *p_vidaw_state)
 {
 	if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
@@ -147,7 +160,12 @@ void close_vidaw_state(vidaw_state *p_vidaw_state)
 
 void init_file_state(file_state *p_file_state)
 {
+	// zero out necessary variables
 	p_file_state->cur_num_audio_files = 0;
+	p_file_state->main_pos = 0;
+	p_file_state->max_wav_len = 0;
+
+	// allocate and zero the main buffer for audio playing
 	p_file_state->main_buf = (uint8_t *)malloc(MAIN_AUDIO_BUF_SIZE);
 	memset(p_file_state->main_buf, 0, MAIN_AUDIO_BUF_SIZE);
 }
@@ -171,6 +189,7 @@ void close_file_state(file_state *p_file_state)
 int main(int argc, char** args)
 {
 	bool run_program = true;
+	bool audio_paused = true;
 	vidaw_state *p_vidaw_state;
 	file_state *p_file_state;
         SDL_AudioSpec desired_spec;
@@ -235,10 +254,12 @@ int main(int argc, char** args)
 					item_type cur_type = get_type_from_id(cur_id, p_vidaw_state->head);
 					if (cur_type == PLAY_BUTTON)
 					{
+						audio_paused = false;
 						SDL_PauseAudioDevice(audio_device, 0);
 					}
 					else if (cur_type == PAUSE_BUTTON)
 					{
+						audio_paused = true;
 						SDL_PauseAudioDevice(audio_device, 1);
 					}
 					break; 
@@ -330,12 +351,14 @@ int main(int argc, char** args)
 						{
 							vidaw_error("Local WAV Loading", SDL_GetError(), true);
 						}
-
+						
 						// NEED TO CONVERT DATA TO MAIN SPECIFICATIONSS
 						if (!convert_audio_buf(cur_wav_spec, &obtained_spec, cur_wav_buf, cur_wav_len))
 						{
 							vidaw_error("AUDIO CONVERSION", "Could not convert wav spec.", true);
 						}
+
+						update_max_wav_len(p_file_state);
 					}
 					else
 					{
@@ -355,24 +378,34 @@ int main(int argc, char** args)
 		}
 		
 		// audio process block
-		if (p_file_state->cur_num_audio_files > 0)
+		if (p_file_state->cur_num_audio_files > 0 && !audio_paused)
 		{
 			for (int i = 0; i < p_file_state->cur_num_audio_files; i++)
 			{
 				for (int j = 0; j < MAIN_AUDIO_BUF_SIZE; j++)
-				{
-					p_file_state->main_buf[j] += p_file_state->wav_buf[i][j];
+				{	
+					if (p_file_state->wav_len[i] >= p_file_state->main_pos + j)
+					{
+						p_file_state->main_buf[j] += p_file_state->wav_buf[i][p_file_state->main_pos + j];
+					}
 				}
 			}
-		}
+			if ((p_file_state->main_pos + MAIN_AUDIO_BUF_SIZE) <= p_file_state->max_wav_len)
+			{
+				p_file_state->main_pos += MAIN_AUDIO_BUF_SIZE;
+			}
+			else
+			{
+				p_file_state->main_pos = 0;
+			}
 
-		if (SDL_QueueAudio(audio_device, p_file_state->main_buf, MAIN_AUDIO_BUF_SIZE) < 0)
-		{
-			vidaw_error("AUDIO PROCESS", SDL_GetError(), true);
+			if (SDL_QueueAudio(audio_device, p_file_state->main_buf, MAIN_AUDIO_BUF_SIZE) < 0)
+			{
+				vidaw_error("AUDIO PROCESS", SDL_GetError(), true);
+			}
+			memset(p_file_state->main_buf, 0, MAIN_AUDIO_BUF_SIZE);
 		}
-
-		memset(p_file_state->main_buf, 0, MAIN_AUDIO_BUF_SIZE);
-		SDL_Delay(1000);
+		//SDL_Delay(1000);
 	}
 
 	// clean up and quit 
